@@ -148,10 +148,15 @@ class ChannelCollector():
         ]
 
         result = self._esl.send('api show calls')
-        for row in csv.DictReader(result.data.splitlines()):
-            uuid = row['uuid']
-            name = row['name']
-            if uuid is not None and len(uuid) > 0 and name is not None and len(name) > 0:
+        rows = [row.strip() for row in result.data.splitlines()]
+        # Filter empty rows
+        rows = [row for row in rows if len(row) > 0]
+        # Remove the last one (X total.)
+        rows = rows[:-1]
+        if len(rows) > 1:
+            for row in csv.DictReader(rows):
+                uuid = row['uuid']
+
                 self._esl.send(f'api uuid_set_media_stats {uuid}')
                 result = self._esl.send(f'api uuid_dump {uuid}')
                 channelvars = dict([
@@ -168,7 +173,7 @@ class ChannelCollector():
                     if key in metrics:
                         metrics[key].add_metric(label_values, metric_value)
 
-                channel_info_label_values = [uuid, name]
+                channel_info_label_values = [uuid, row['name']]
                 channel_info_metric.add_metric(channel_info_label_values, 1)
 
         return itertools.chain(metrics.values(), [channel_info_metric])
