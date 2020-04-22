@@ -187,4 +187,8 @@ def collect_esl(config, host):
 
     registry = CollectorRegistry()
     registry.register(ChannelCollector(esl))
-    return generate_latest(registry)
+    result = generate_latest(registry)
+
+    esl.stop()
+
+    return result
