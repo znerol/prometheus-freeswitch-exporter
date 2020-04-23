@@ -16,34 +16,79 @@ from prometheus_client.core import GaugeMetricFamily
 from freeswitch_exporter.esl import ESL
 
 
-class ChannelCollector():
+class ESLProcessInfo():
     """
-    Collects channel statistics.
-
-    # HELP freeswitch_version_info FreeSWITCH version info
-    # TYPE freeswitch_version_info gauge
-    freeswitch_version_info{release="15",repoid="7599e35a",version="4.4"} 1.0
+    Process info async collector
     """
 
-    def __init__(self, host, port, password):
-        self._host = host
-        self._port = port
-        self._password = password
+    def __init__(self, esl: ESL):
+        self._esl = esl
 
-    @asynccontextmanager
-    async def _connect(self):
-        reader, writer = await asyncio.open_connection(self._host, self._port)
-        try:
-            esl = ESL(reader, writer)
-            await esl.initialize()
-            await esl.login(self._password)
-            yield esl
-        finally:
-            writer.close()
-            await writer.wait_closed()
+    async def collect(self):
+        """
+        Collects FreeSWITCH process info metrics.
+        """
 
-    @async_to_sync
-    async def collect(self):  # pylint: disable=missing-docstring
+        (_, result) = await self._esl.send(
+            'api json {"command" : "status", "data" : ""}')
+        response = json.loads(result).get('response', {})
+
+        process_info_metric = GaugeMetricFamily(
+            'freeswitch_info',
+            'FreeSWITCH info',
+            labels=['version'])
+        if 'version' in response:
+            process_info_metric.add_metric([response['version']], 1)
+
+        process_status_metric = GaugeMetricFamily(
+            'freeswitch_up',
+            'FreeSWITCH ready status',
+        )
+        if 'systemStatus' in response:
+            status = int(response['systemStatus'] == 'ready')
+            process_status_metric.add_metric([], status)
+
+        process_memory_metric = GaugeMetricFamily(
+            'freeswitch_stack_bytes',
+            'FreeSWITCH stack size',
+        )
+        if 'stackSizeKB' in response:
+            memory = response['stackSizeKB'].get('current', 0)
+            process_memory_metric.add_metric([], memory * 1024)
+
+        process_session_metrics = []
+        if 'sessions' in response:
+            for metric in ['total', 'active', 'limit']:
+                process_session_metric = GaugeMetricFamily(
+                    f'freeswitch_session_{metric}',
+                    f'FreeSWITCH {metric} number of sessions',
+                )
+
+                value = response['sessions'].get('count', {}).get(metric, 0)
+                process_session_metric.add_metric([], value)
+
+                process_session_metrics.append(process_session_metric)
+
+        return itertools.chain([
+            process_info_metric,
+            process_status_metric,
+            process_memory_metric
+        ], process_session_metrics)
+
+
+class ESLChannelInfo():
+    """
+    Channel info async collector
+    """
+
+    def __init__(self, esl: ESL):
+        self._esl = esl
+
+    async def collect(self):
+        """
+        Collects channel metrics.
+        """
+
         channel_metrics = {
             'variable_rtp_audio_in_raw_bytes': GaugeMetricFamily(
                 'rtp_audio_in_raw_bytes_total',
@@ -166,28 +211,63 @@ class ChannelCollector():
             'variable_rtp_audio_in_mean_interval',
         ]
 
+        (_, result) = await self._esl.send('api show calls as json')
+        for row in json.loads(result).get('rows', []):
+            uuid = row['uuid']
+
+            await self._esl.send(f'api uuid_set_media_stats {uuid}')
+            (_, result) = await self._esl.send(f'api uuid_dump {uuid} json')
+            channelvars = json.loads(result)
+
+            label_values = [uuid]
+            for key, metric_value in channelvars.items():
+                if key in millisecond_metrics:
+                    metric_value = float(metric_value) / 1000.
+                if key in channel_metrics:
+                    channel_metrics[key].add_metric(
+                        label_values, metric_value)
+
+            channel_info_label_values = [uuid, row['name']]
+            channel_info_metric.add_metric(
+                channel_info_label_values, 1)
+
+        return itertools.chain(
+            channel_metrics.values(),
+            [channel_info_metric])
+
+
+class ChannelCollector():
+    """
+    Collects channel statistics.
+
+    # HELP freeswitch_version_info FreeSWITCH version info
+    # TYPE freeswitch_version_info gauge
+    freeswitch_version_info{release="15",repoid="7599e35a",version="4.4"} 1.0
+    """
+
+    def __init__(self, host, port, password):
+        self._host = host
+        self._port = port
+        self._password = password
+
+    @asynccontextmanager
+    async def _connect(self):
+        reader, writer = await asyncio.open_connection(self._host, self._port)
+        try:
+            esl = ESL(reader, writer)
+            await esl.initialize()
+            await esl.login(self._password)
+            yield esl
+        finally:
+            writer.close()
+            await writer.wait_closed()
+
+    @async_to_sync
+    async def collect(self):  # pylint: disable=missing-docstring
         async with self._connect() as esl:
-            (_, result) = await esl.send('api show calls as json')
-            for row in json.loads(result).get('rows', []):
-                uuid = row['uuid']
-
-                await esl.send(f'api uuid_set_media_stats {uuid}')
-                (_, result) = await esl.send(f'api uuid_dump {uuid} json')
-                channelvars = json.loads(result)
-
-                label_values = [uuid]
-                for key, metric_value in channelvars.items():
-                    if key in millisecond_metrics:
-                        metric_value = float(metric_value) / 1000.
-                    if key in channel_metrics:
-                        channel_metrics[key].add_metric(
-                            label_values, metric_value)
-
-                channel_info_label_values = [uuid, row['name']]
-                channel_info_metric.add_metric(
-                    channel_info_label_values, 1)
-
-        return itertools.chain(channel_metrics.values(), [channel_info_metric])
+            return itertools.chain(
+                await ESLProcessInfo(esl).collect(),
+                await ESLChannelInfo(esl).collect())
 
 
 def collect_esl(config, host):
