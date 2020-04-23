@@ -4,8 +4,8 @@ Prometheus collecters for FreeSWITCH.
 # pylint: disable=too-few-public-methods
 
 import asyncio
-import csv
 import itertools
+import json
 
 from contextlib import asynccontextmanager
 
@@ -44,7 +44,7 @@ class ChannelCollector():
 
     @async_to_sync
     async def collect(self):  # pylint: disable=missing-docstring
-        metrics = {
+        channel_metrics = {
             'variable_rtp_audio_in_raw_bytes': GaugeMetricFamily(
                 'rtp_audio_in_raw_bytes_total',
                 'Total number of bytes received via this channel.',
@@ -167,37 +167,27 @@ class ChannelCollector():
         ]
 
         async with self._connect() as esl:
-            (_, result) = await esl.send('api show calls')
-            rows = [row.strip() for row in result.splitlines()]
-            # Filter empty rows
-            rows = [row for row in rows if len(row) > 0]
-            # Remove the last one (X total.)
-            rows = rows[:-1]
-            if len(rows) > 1:
-                for row in csv.DictReader(rows):
-                    uuid = row['uuid']
+            (_, result) = await esl.send('api show calls as json')
+            for row in json.loads(result).get('rows', []):
+                uuid = row['uuid']
 
-                    await esl.send(f'api uuid_set_media_stats {uuid}')
-                    (_, result) = await esl.send(f'api uuid_dump {uuid}')
-                    channelvars = dict([
-                        pair.split(': ', 1)
-                        for pair
-                        in result.splitlines()
-                        if ':' in pair
-                    ])
+                await esl.send(f'api uuid_set_media_stats {uuid}')
+                (_, result) = await esl.send(f'api uuid_dump {uuid} json')
+                channelvars = json.loads(result)
 
-                    label_values = [uuid]
-                    for key, metric_value in channelvars.items():
-                        if key in millisecond_metrics:
-                            metric_value = float(metric_value) / 1000.
-                        if key in metrics:
-                            metrics[key].add_metric(label_values, metric_value)
+                label_values = [uuid]
+                for key, metric_value in channelvars.items():
+                    if key in millisecond_metrics:
+                        metric_value = float(metric_value) / 1000.
+                    if key in channel_metrics:
+                        channel_metrics[key].add_metric(
+                            label_values, metric_value)
 
-                    channel_info_label_values = [uuid, row['name']]
-                    channel_info_metric.add_metric(
-                        channel_info_label_values, 1)
+                channel_info_label_values = [uuid, row['name']]
+                channel_info_metric.add_metric(
+                    channel_info_label_values, 1)
 
-        return itertools.chain(metrics.values(), [channel_info_metric])
+        return itertools.chain(channel_metrics.values(), [channel_info_metric])
 
 
 def collect_esl(config, host):
