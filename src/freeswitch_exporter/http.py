@@ -4,13 +4,16 @@ HTTP API for FreeSWITCH prometheus collector.
 """
 
 import time
+import traceback
 import yaml
+
 from prometheus_client import CONTENT_TYPE_LATEST, Summary, Counter, generate_latest
+from werkzeug.exceptions import InternalServerError
 from werkzeug.routing import Map, Rule
 from werkzeug.serving import run_simple
 from werkzeug.wrappers import Request, Response
-from werkzeug.exceptions import InternalServerError
-from .collector import collect_esl
+
+from freeswitch_exporter.collector import collect_esl
 
 
 class FreeswitchExporterApplication():
@@ -97,9 +100,9 @@ class FreeswitchExporterApplication():
 
         try:
             return self._views[endpoint](**params)
-        except Exception as error: # pylint: disable=broad-except
+        except Exception: # pylint: disable=broad-except
             self._errors.labels(args.get('module', 'default')).inc()
-            raise InternalServerError(error)
+            raise InternalServerError(traceback.format_exc())
 
     @Request.application
     def __call__(self, request):

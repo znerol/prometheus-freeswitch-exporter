@@ -3,13 +3,17 @@ Prometheus collecters for FreeSWITCH.
 """
 # pylint: disable=too-few-public-methods
 
+import asyncio
 import csv
 import itertools
 
-import greenswitch
+from contextlib import asynccontextmanager
 
+from asgiref.sync import async_to_sync
 from prometheus_client import CollectorRegistry, generate_latest
 from prometheus_client.core import GaugeMetricFamily
+
+from freeswitch_exporter.esl import ESL
 
 
 class ChannelCollector():
@@ -21,10 +25,25 @@ class ChannelCollector():
     freeswitch_version_info{release="15",repoid="7599e35a",version="4.4"} 1.0
     """
 
-    def __init__(self, esl):
-        self._esl = esl
+    def __init__(self, host, port, password):
+        self._host = host
+        self._port = port
+        self._password = password
 
-    def collect(self):  # pylint: disable=missing-docstring
+    @asynccontextmanager
+    async def _connect(self):
+        reader, writer = await asyncio.open_connection(self._host, self._port)
+        try:
+            esl = ESL(reader, writer)
+            await esl.initialize()
+            await esl.login(self._password)
+            yield esl
+        finally:
+            writer.close()
+            await writer.wait_closed()
+
+    @async_to_sync
+    async def collect(self):  # pylint: disable=missing-docstring
         metrics = {
             'variable_rtp_audio_in_raw_bytes': GaugeMetricFamily(
                 'rtp_audio_in_raw_bytes_total',
@@ -147,48 +166,46 @@ class ChannelCollector():
             'variable_rtp_audio_in_mean_interval',
         ]
 
-        result = self._esl.send('api show calls')
-        rows = [row.strip() for row in result.data.splitlines()]
-        # Filter empty rows
-        rows = [row for row in rows if len(row) > 0]
-        # Remove the last one (X total.)
-        rows = rows[:-1]
-        if len(rows) > 1:
-            for row in csv.DictReader(rows):
-                uuid = row['uuid']
+        async with self._connect() as esl:
+            (_, result) = await esl.send('api show calls')
+            rows = [row.strip() for row in result.splitlines()]
+            # Filter empty rows
+            rows = [row for row in rows if len(row) > 0]
+            # Remove the last one (X total.)
+            rows = rows[:-1]
+            if len(rows) > 1:
+                for row in csv.DictReader(rows):
+                    uuid = row['uuid']
 
-                self._esl.send(f'api uuid_set_media_stats {uuid}')
-                result = self._esl.send(f'api uuid_dump {uuid}')
-                channelvars = dict([
-                    pair.split(': ', 1)
-                    for pair
-                    in result.data.splitlines()
-                    if ':' in pair
-                ])
+                    await esl.send(f'api uuid_set_media_stats {uuid}')
+                    (_, result) = await esl.send(f'api uuid_dump {uuid}')
+                    channelvars = dict([
+                        pair.split(': ', 1)
+                        for pair
+                        in result.splitlines()
+                        if ':' in pair
+                    ])
 
-                label_values = [uuid]
-                for key, metric_value in channelvars.items():
-                    if key in millisecond_metrics:
-                        metric_value = float(metric_value) / 1000.
-                    if key in metrics:
-                        metrics[key].add_metric(label_values, metric_value)
+                    label_values = [uuid]
+                    for key, metric_value in channelvars.items():
+                        if key in millisecond_metrics:
+                            metric_value = float(metric_value) / 1000.
+                        if key in metrics:
+                            metrics[key].add_metric(label_values, metric_value)
 
-                channel_info_label_values = [uuid, row['name']]
-                channel_info_metric.add_metric(channel_info_label_values, 1)
+                    channel_info_label_values = [uuid, row['name']]
+                    channel_info_metric.add_metric(
+                        channel_info_label_values, 1)
 
         return itertools.chain(metrics.values(), [channel_info_metric])
 
 
 def collect_esl(config, host):
-    """Scrape a host and return prometheus text format for it"""
+    """Scrape a host and return prometheus text format for it (asinc)"""
 
-    esl = greenswitch.InboundESL(host, **config)
-    esl.connect()
+    port = config.get('port', 8021)
+    password = config.get('password', 'ClueCon')
 
     registry = CollectorRegistry()
-    registry.register(ChannelCollector(esl))
-    result = generate_latest(registry)
-
-    esl.stop()
-
-    return result
+    registry.register(ChannelCollector(host, port, password))
+    return generate_latest(registry)
