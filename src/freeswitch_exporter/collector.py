@@ -203,7 +203,7 @@ class ESLChannelInfo():
         channel_info_metric = GaugeMetricFamily(
             'rtp_channel_info',
             'FreeSWITCH RTP channel info',
-            labels=['id', 'name'])
+            labels=['id', 'name', 'user_agent'])
 
         millisecond_metrics = [
             'variable_rtp_audio_in_jitter_min_variance',
@@ -227,7 +227,8 @@ class ESLChannelInfo():
                     channel_metrics[key].add_metric(
                         label_values, metric_value)
 
-            channel_info_label_values = [uuid, row['name']]
+            user_agent = channelvars.get('variable_sip_user_agent', 'Unknown')
+            channel_info_label_values = [uuid, row['name'], user_agent]
             channel_info_metric.add_metric(
                 channel_info_label_values, 1)
 
