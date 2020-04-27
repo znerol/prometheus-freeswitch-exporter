@@ -22,7 +22,7 @@ Usage
 
     positional arguments:
       config      Path to configuration file (esl.yml)
-      port        Port on which the exporter is listening (9718)
+      port        Port on which the exporter is listening (9724)
       address     Address to which the exporter will bind
 
     optional arguments:
@@ -31,7 +31,7 @@ Usage
 Use `::` for the `address` argument in order to bind to both IPv6 and IPv4
 sockets on dual stacked machines.
 
-Visit http://localhost:9718/esl?target=1.2.3.4 where 1.2.3.4 is the IP of
+Visit http://localhost:9724/esl?target=1.2.3.4 where 1.2.3.4 is the IP of
 FreeSWITCH to get metrics from. Specify the ``module`` request parameter, to
 choose which module to use from the config file.
 
@@ -74,8 +74,8 @@ Example config for FreeSWITCH exporter running on FreeSWITCH node:
       - job_name: 'freeswitch'
         static_configs:
           - targets:
-            - 192.168.1.2:9718  # FreeSWITCH node with FreeSWITCH exporter.
-            - 192.168.1.3:9718  # FreeSWITCH node with FreeSWITCH exporter.
+            - 192.168.1.2:9724  # FreeSWITCH node with FreeSWITCH exporter.
+            - 192.168.1.3:9724  # FreeSWITCH node with FreeSWITCH exporter.
         metrics_path: /esl
         params:
           module: [default]
@@ -99,7 +99,7 @@ Example config for FreeSWITCH exporter running on Prometheus host:
           - source_labels: [__param_target]
             target_label: instance
           - target_label: __address__
-            replacement: 127.0.0.1:9718  # FreeSWITCH exporter.
+            replacement: 127.0.0.1:9724  # FreeSWITCH exporter.
 
 Grafana Dashboards
 ------------------
