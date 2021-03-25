@@ -100,9 +100,11 @@ class FreeswitchExporterApplication():
 
         try:
             return self._views[endpoint](**params)
-        except Exception: # pylint: disable=broad-except
+        except Exception as error:  # pylint: disable=broad-except
+            self._log.exception("Exception thrown while rendering view")
             self._errors.labels(args.get('module', 'default')).inc()
-            raise InternalServerError(traceback.format_exc())
+            raise InternalServerError from error
+
 
     @Request.application
     def __call__(self, request):
