@@ -90,7 +90,7 @@ class ESL():
         body = await self._read_body(headers)
 
         if headers["Content-Type"] != 'api/response':
-            raise ESLProtocolError(f"Expected auth response, "
+            raise ESLProtocolError(f"Expected api response, "
                                    f"but got {headers!r}")
 
         return headers, body
