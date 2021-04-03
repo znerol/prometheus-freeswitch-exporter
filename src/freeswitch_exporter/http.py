@@ -1,10 +1,9 @@
 """
-import traceback
 HTTP API for FreeSWITCH prometheus collector.
 """
 
+import logging
 import time
-import traceback
 import yaml
 
 from prometheus_client import CONTENT_TYPE_LATEST, Summary, Counter, generate_latest
@@ -27,6 +26,8 @@ class FreeswitchExporterApplication():
         self._config = config
         self._duration = duration
         self._errors = errors
+
+        self._log = logging.getLogger(__name__)
 
         self._url_map = Map([
             Rule('/', endpoint='index'),
@@ -100,9 +101,11 @@ class FreeswitchExporterApplication():
 
         try:
             return self._views[endpoint](**params)
-        except Exception: # pylint: disable=broad-except
+        except Exception as error:  # pylint: disable=broad-except
+            self._log.exception("Exception thrown while rendering view")
             self._errors.labels(args.get('module', 'default')).inc()
-            raise InternalServerError(traceback.format_exc())
+            raise InternalServerError from error
+
 
     @Request.application
     def __call__(self, request):
