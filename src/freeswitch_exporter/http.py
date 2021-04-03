@@ -1,10 +1,9 @@
 """
-import traceback
 HTTP API for FreeSWITCH prometheus collector.
 """
 
+import logging
 import time
-import traceback
 import yaml
 
 from prometheus_client import CONTENT_TYPE_LATEST, Summary, Counter, generate_latest
@@ -27,6 +26,8 @@ class FreeswitchExporterApplication():
         self._config = config
         self._duration = duration
         self._errors = errors
+
+        self._log = logging.getLogger(__name__)
 
         self._url_map = Map([
             Rule('/', endpoint='index'),
