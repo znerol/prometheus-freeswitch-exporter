@@ -232,6 +232,14 @@ class ESLChannelInfo():
                 )
                 continue
 
+            if result.startsWith("-ERR "):
+                self._log.debug(
+                    "Got error while scraping call stats for %s: %s",
+                    uuid,
+                    result.strip()
+                )
+                continue
+
             if result == "":
                 self._log.debug(
                     "Got empty result while scraping call stats for %s", uuid)
