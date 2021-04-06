@@ -231,6 +231,12 @@ class ESLChannelInfo():
                     uuid
                 )
                 continue
+
+            if result == "":
+                self._log.debug(
+                    "Got empty result while scraping call stats for %s", uuid)
+                continue
+
             channelvars = json.loads(result)
 
             label_values = [uuid]
