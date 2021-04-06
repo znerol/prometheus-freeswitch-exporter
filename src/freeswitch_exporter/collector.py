@@ -232,7 +232,7 @@ class ESLChannelInfo():
                 )
                 continue
 
-            if result.startsWith("-ERR "):
+            if result.startswith("-ERR "):
                 self._log.debug(
                     "Got error while scraping call stats for %s: %s",
                     uuid,
