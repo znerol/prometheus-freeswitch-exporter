@@ -215,22 +215,15 @@ class ESLChannelInfo():
 
         # This loop is potentially running while calls are being dropped and
         # new calls are established. This will lead to some failing api
-        # requests In that case it is better to just skip scraping for that
+        # requests. In that case it is better to just skip scraping for that
         # call and continue with the next one in order to avoid failing the
         # whole scrape.
         (_, result) = await self._esl.send('api show calls as json')
         for row in json.loads(result).get('rows', []):
             uuid = row['uuid']
 
-            try:
-                await self._esl.send(f'api uuid_set_media_stats {uuid}')
-                (_, result) = await self._esl.send(f'api uuid_dump {uuid} json')
-            except ESLProtocolError:
-                self._log.exception(
-                    "Exception thrown while scraping call stats for %s",
-                    uuid
-                )
-                continue
+            await self._esl.send(f'api uuid_set_media_stats {uuid}')
+            (_, result) = await self._esl.send(f'api uuid_dump {uuid} json')
 
             if result.startswith("-ERR "):
                 self._log.debug(
@@ -238,11 +231,6 @@ class ESLChannelInfo():
                     uuid,
                     result.strip()
                 )
-                continue
-
-            if result == "":
-                self._log.debug(
-                    "Got empty result while scraping call stats for %s", uuid)
                 continue
 
             channelvars = json.loads(result)
