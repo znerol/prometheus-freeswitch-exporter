@@ -6,6 +6,7 @@ Prometheus collecters for FreeSWITCH.
 import asyncio
 import itertools
 import json
+import logging
 
 from contextlib import asynccontextmanager
 
@@ -83,6 +84,7 @@ class ESLChannelInfo():
 
     def __init__(self, esl: ESL):
         self._esl = esl
+        self._log = logging.getLogger(__name__)
 
     async def collect(self):
         """
@@ -211,12 +213,26 @@ class ESLChannelInfo():
             'variable_rtp_audio_in_mean_interval',
         ]
 
+        # This loop is potentially running while calls are being dropped and
+        # new calls are established. This will lead to some failing api
+        # requests. In that case it is better to just skip scraping for that
+        # call and continue with the next one in order to avoid failing the
+        # whole scrape.
         (_, result) = await self._esl.send('api show calls as json')
         for row in json.loads(result).get('rows', []):
             uuid = row['uuid']
 
             await self._esl.send(f'api uuid_set_media_stats {uuid}')
             (_, result) = await self._esl.send(f'api uuid_dump {uuid} json')
+
+            if result.startswith("-ERR "):
+                self._log.debug(
+                    "Got error while scraping call stats for %s: %s",
+                    uuid,
+                    result.strip()
+                )
+                continue
+
             channelvars = json.loads(result)
 
             label_values = [uuid]
