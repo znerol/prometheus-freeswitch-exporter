@@ -106,8 +106,8 @@ Grafana Dashboards
 
 None yet.
 
-.. |Build Status| image:: https://travis-ci.org/znerol/prometheus-freeswitch-exporter.svg?branch=master
-   :target: https://travis-ci.org/znerol/prometheus-freeswitch-exporter
+.. |Build Status| image:: https://github.com/znerol/prometheus-freeswitch-exporter/actions/workflows/ci.yml/badge.svg
+   :target: https://github.com/znerol/prometheus-freeswitch-exporter/actions/workflows/ci.yml
 .. |Package Version| image:: https://img.shields.io/pypi/v/prometheus-freeswitch-exporter.svg
    :target: https://pypi.python.org/pypi/prometheus-freeswitch-exporter
 .. _wiki: https://github.com/znerol/prometheus-freeswitch-exporter/wiki
