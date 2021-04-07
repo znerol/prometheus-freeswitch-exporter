@@ -52,8 +52,6 @@ Example ``esl.yml``
         port: 8021  # default port, can be omitted
         password: ClueCon
 
-The configuration is passed directly into `greenswitch.InboundESL()`_.
-
 FreeSWITCH Configuration
 ------------------------
 
@@ -111,4 +109,3 @@ None yet.
 .. |Package Version| image:: https://img.shields.io/pypi/v/prometheus-freeswitch-exporter.svg
    :target: https://pypi.python.org/pypi/prometheus-freeswitch-exporter
 .. _wiki: https://github.com/znerol/prometheus-freeswitch-exporter/wiki
-.. _`greenswitch.InboundESL()`: https://pypi.org/project/greenswitch/
