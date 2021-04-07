@@ -4,7 +4,7 @@ from setuptools import setup
 
 setup(
     name="prometheus-freeswitch-exporter",
-    version="1.0.0",
+    version="1.0.1",
     author="Lorenz Schori",
     author_email="lo@znerol.ch",
     description=("FreeSWITCH exporter for the Prometheus monitoring system."),
