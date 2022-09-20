@@ -52,7 +52,7 @@ class ESL():
 
     async def login(self, password: str) -> bool:
         """
-        Send password to FreeSWITCH. Returns True if login was successfull.
+        Send password to FreeSWITCH. Returns True if login was successful.
         """
         result = False
 

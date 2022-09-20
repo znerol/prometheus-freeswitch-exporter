@@ -1,13 +1,22 @@
 """
-Prometheus collecters for FreeSWITCH.
+Prometheus collectors for FreeSWITCH.
 """
 # pylint: disable=too-few-public-methods
+
+# commands in use by this collector
+#
+# api json {"command": "status", "data": ""}
+# api json {"command": "show calls", "data": ""}
+# api json {"command": "sofia", "data": ""}
+#
+# api sofia status
+# api sofia status profile internal
+
 
 import asyncio
 import itertools
 import json
 import logging
-
 from contextlib import asynccontextmanager
 
 from asgiref.sync import async_to_sync
@@ -15,9 +24,10 @@ from prometheus_client import CollectorRegistry, generate_latest
 from prometheus_client.core import GaugeMetricFamily
 
 from freeswitch_exporter.esl import ESL
+from freeswitch_exporter.sofia_status import SofiaProfile, SofiaProfileStatus
 
 
-class ESLProcessInfo():
+class ESLProcessInfo:
     """
     Process info async collector
     """
@@ -77,7 +87,7 @@ class ESLProcessInfo():
         ], process_session_metrics)
 
 
-class ESLChannelInfo():
+class ESLChannelInfo:
     """
     Channel info async collector
     """
@@ -233,17 +243,17 @@ class ESLChannelInfo():
                 )
                 continue
 
-            channelvars = json.loads(result)
+            channel_vars = json.loads(result)
 
             label_values = [uuid]
-            for key, metric_value in channelvars.items():
+            for key, metric_value in channel_vars.items():
                 if key in millisecond_metrics:
                     metric_value = float(metric_value) / 1000.
                 if key in channel_metrics:
                     channel_metrics[key].add_metric(
                         label_values, metric_value)
 
-            user_agent = channelvars.get('variable_sip_user_agent', 'Unknown')
+            user_agent = channel_vars.get('variable_sip_user_agent', 'Unknown')
             channel_info_label_values = [uuid, row['name'], user_agent]
             channel_info_metric.add_metric(
                 channel_info_label_values, 1)
@@ -253,7 +263,70 @@ class ESLChannelInfo():
             [channel_info_metric])
 
 
-class ChannelCollector():
+class ESLSofiaStatusCollector:
+    def __init__(self, esl: ESL):
+        self._esl = esl
+        self._log = logging.getLogger(__name__)
+
+    async def collect(self):
+        gauges = []
+        sofia_profile_status_fields = {
+            "congestion": GaugeMetricFamily(
+                "sofia_profile_congested_calls_total",
+                "How many calls were rejected for busy lines or other resource exhaustion on this Sofia profile.",
+                labels=["name"],
+            ),
+            "session_to": GaugeMetricFamily(
+                "sofia_profile_session_timeout_total",
+                "How many calls were dropped for timeout causes on this Sofia profile.",
+                labels=["name"],
+            ),
+            "max_dialog": GaugeMetricFamily(
+                "sofia_profile_maximum_sessions_configuration",
+                "How many sessions can be active at once on this Sofia profile before refusing calls for congestion.",
+                labels=["name"],
+            ),
+            "calls_in": GaugeMetricFamily(
+                "sofia_profile_calls_inbound_total",
+                "How many calls were received inbound on this Sofia profile.",
+                labels=["name"],
+            ),
+            "failed_calls_in": GaugeMetricFamily(
+                "sofia_profile_failed_inbound_calls_total",
+                "How many incoming calls couldn't be accepted by this Sofia profile.",
+                labels=["name"],
+            ),
+            "calls_out": GaugeMetricFamily(
+                "sofia_profile_calls_outbound_total",
+                "How many calls were send by this Sofia profile.",
+                labels=["name"],
+            ),
+            "failed_calls_out": GaugeMetricFamily(
+                "sofia_profile_failed_outbound_calls_total",
+                "How many outbound calls couldn't be completed by this Sofia profile.",
+                labels=["name"],
+            ),
+            "registrations": GaugeMetricFamily(
+                "sofia_profile_registrations_total",
+                "How many clients are registered to this Sofia profile.",
+                labels=["name"],
+            ),
+        }
+
+        (_, sofia_status_data) = await self._esl.send('api sofia status')
+
+        for profile in SofiaProfile.profile_list_from_sofia_status(sofia_status_data):
+            (_, sofia_profile_status_data) = await self._esl.send('api sofia status profile %s' % profile.name)
+            sofia_profile_status = SofiaProfileStatus(sofia_profile_status_data)
+
+            for name, gauge in sofia_profile_status_fields.items():
+                gauge.add_metric([sofia_profile_status.name], getattr(sofia_profile_status, name))
+                gauges.append(gauge)
+
+        return gauges
+
+
+class ChannelCollector:
     """
     Collects channel statistics.
 
@@ -284,11 +357,13 @@ class ChannelCollector():
         async with self._connect() as esl:
             return itertools.chain(
                 await ESLProcessInfo(esl).collect(),
-                await ESLChannelInfo(esl).collect())
+                await ESLChannelInfo(esl).collect(),
+                await ESLSofiaStatusCollector(esl).collect(),
+            )
 
 
 def collect_esl(config, host):
-    """Scrape a host and return prometheus text format for it (asinc)"""
+    """Scrape a host and return prometheus text format for it (async)"""
 
     port = config.get('port', 8021)
     password = config.get('password', 'ClueCon')

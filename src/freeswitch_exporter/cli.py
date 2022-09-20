@@ -6,6 +6,7 @@ import sys
 from argparse import ArgumentParser
 from freeswitch_exporter.http import start_http_server
 
+
 def main(args=None):
     """
     Main entry point.
